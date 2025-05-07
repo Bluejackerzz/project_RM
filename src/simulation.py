@@ -1,15 +1,10 @@
 import cv2
 import numpy as np
-import os
 
-def run_traffic_simulation(green_times, input_path='data/input_video.mp4', output_path='results/output_video.mp4'):
-    cap = cv2.VideoCapture(input_path)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = int(cap.get(cv2.CAP_PROP_FPS)) or 25
-
+def run_traffic_simulation(green_times, output_path='results/output_video.mp4'):
+    width, height = 800, 800
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    out = cv2.VideoWriter(output_path, fourcc, 1, (width, height))
 
     lanes = ['north', 'south', 'east', 'west']
     lane_colors = {
@@ -17,48 +12,45 @@ def run_traffic_simulation(green_times, input_path='data/input_video.mp4', outpu
         'red': (0, 0, 255)
     }
 
+    # Tentukan grup lampu menyala berpasangan (north-south vs east-west)
     phase_1 = ['north', 'south']
     phase_2 = ['east', 'west']
 
     duration_ns = max(int(green_times.get('north', 30)), 10)
     duration_ew = max(int(green_times.get('east', 30)), 10)
 
-    total_frames_ns = duration_ns * fps
-    total_frames_ew = duration_ew * fps
+    def draw_frame(active_lanes):
+        frame = np.zeros((height, width, 3), dtype=np.uint8)
 
-    lane_positions = {
-        'north': (width//2 - 30, 50),
-        'south': (width//2 - 30, height - 110),
-        'east':  (width - 110, height//2 - 30),
-        'west':  (50, height//2 - 30)
-    }
+        lane_positions = {
+            'north': (370, 50),
+            'south': (370, 700),
+            'east':  (700, 370),
+            'west':  (50, 370)
+        }
 
-    def overlay_lights(frame, active_lanes):
         for lane in lanes:
             color = lane_colors['green'] if lane in active_lanes else lane_colors['red']
             x, y = lane_positions[lane]
-            cv2.rectangle(frame, (x, y), (x + 60, y + 60), color, -1)
+            if lane in ['north', 'south']:
+                cv2.rectangle(frame, (x, y), (x + 60, y + 60), color, -1)
+            else:
+                cv2.rectangle(frame, (x, y), (x + 60, y + 60), color, -1)
+
             status = "GREEN" if lane in active_lanes else "RED"
             cv2.putText(frame, f"{lane.upper()}: {status}", (x - 30, y - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
         return frame
 
-    current_phase = phase_1
-    frame_counter = 0
-    switch_point = total_frames_ns
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        frame_counter += 1
-        frame = overlay_lights(frame, current_phase)
+    # Simulasikan fase north-south
+    for _ in range(duration_ns):
+        frame = draw_frame(phase_1)
         out.write(frame)
 
-        if frame_counter == switch_point:
-            current_phase = phase_2 if current_phase == phase_1 else phase_1
-            switch_point += total_frames_ew if current_phase == phase_2 else total_frames_ns
+    # Simulasikan fase east-west
+    for _ in range(duration_ew):
+        frame = draw_frame(phase_2)
+        out.write(frame)
 
-    cap.release()
     out.release()
